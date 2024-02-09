@@ -1,0 +1,16 @@
+DATASET:
+  PATH: "./dataset/binar"
+
+SAM:
+  SAM_VIT_B: "./weights/sam_vit_b_01ec64.pth"
+  SAM_VIT_L: "./weights/sam_vit_l_0b3195.pth"
+  SAM_VIT_H: "./weights/sam_vit_h_4b8939.pth"
+  MOBILESAM_VIT: "./weights/mobile_sam.pth"
+
+LORA:
+  RANK: 512
+
+TRAIN:
+  BATCH_SIZE: 1
+  NUM_EPOCHS: 50
+  LEARNING_RATE: 0.0001
