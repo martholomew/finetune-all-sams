@@ -35,7 +35,8 @@ train_dataset_path = config_file["DATASET"]["PATH"]
 # Load SAM model
 sam = build_sam_vit_b(checkpoint=config_file["SAM"]["SAM_VIT_B"])
 #Create SAM LoRA
-sam_lora = LoRA_sam(sam, config_file["LORA"]["RANK"])  
+rank = config_file["LORA"]["RANK"]
+sam_lora = LoRA_sam(sam, rank)  
 model = sam_lora.sam
 # Process the dataset
 processor = Samprocessor(model, args.sam)
@@ -83,6 +84,9 @@ for epoch in range(num_epochs):
 
     print(f'EPOCH: {epoch}')
     print(f'Mean loss training: {mean(epoch_losses)}')
+    if not epoch % 10:
+      sam_lora.save_lora_parameters(f"lora_rank{rank}_{epoch}.safetensors")
+      print("Saved!")
 
 # Save the parameters of the model in safetensors format
 rank = config_file["SAM"]["RANK"]
