@@ -36,7 +36,7 @@ train_dataset_path = config_file["DATASET"]["PATH"]
 
 # Load SAM model
 if args.sam == "mobilesam":
-  sam_version = config_file["SAM"]["MOBILESAM_VIT"])
+  sam_version = config_file["SAM"]["MOBILESAM_VIT"]
 elif args.weights == "b":
   sam_version = config_file["SAM"]["SAM_VIT_B"]
 elif args.weights == "l":
