@@ -121,12 +121,14 @@ class Sam(nn.Module):
                 input_size=image_record["image"].shape[-2:],
                 original_size=image_record["original_size"],
             )
+
+            low_res_mask_reshaped = masks
             masks = masks > self.mask_threshold
             outputs.append(
                 {
                     "masks": masks,
                     "iou_predictions": iou_predictions,
-                    "low_res_logits": low_res_masks,
+                    "low_res_logits": low_res_mask_reshaped,
                 }
             )
         return outputs
