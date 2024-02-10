@@ -21,6 +21,7 @@ The model is saved at the end as a safetensor.
 """
 
 parser = argparse.ArgumentParser(description="SAM-fine-tune Training")
+parser.add_argument("load" nargs='?', default=None, help="Load LoRA weights.")
 parser.add_argument("-d", "--device", choices=["cuda", "cpu"], default="cuda", help="What device to run the training on.")
 parser.add_argument("-s", "--sam", choices=["sam", "samfast", "mobilesam", "mobilesamv2"], default="sam", help="What version of SAM to use.")
 parser.add_argument("-w", "--weights", choices=["b", "l", "h"], default="b", help="Which SAM weights to use, does not change if using MobileSAM.")
@@ -49,7 +50,10 @@ rank = config_file["LORA"]["RANK"]
 if args.sam == "mobilesam" and args.lora:
   sam_lora = LoRA_mobilesam(sam, rank)
 elif args.lora:
-  sam_lora = LoRA_sam(sam, rank) 
+  sam_lora = LoRA_sam(sam, rank)
+
+if args.load:
+  sam_lora.load_lora_parameters(args.load)
 
 model = sam_lora.sam
 
