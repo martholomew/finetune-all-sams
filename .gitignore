@@ -156,3 +156,6 @@ cython_debug/
 dataset/*
 weights/*
 *.safetensors
+*.png
+*.jpg
+*.pth

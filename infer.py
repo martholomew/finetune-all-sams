@@ -1,10 +1,10 @@
 import argparse
 import torch
 import numpy as np
-from src.segment_anything import build_sam_vit_b, SamPredictor
-from src.lora import LoRA_sam
+from segment_anything import build_sam_vit_b, SamPredictor
+from utils.lora import LoRA_sam
 import matplotlib.pyplot as plt
-import src.utils as utils
+import utils.utils as utils
 from PIL import Image
 from pathlib import Path
 from os.path import split
@@ -33,7 +33,7 @@ def inference_model(image_path, save_name, mask_path):
         w, h = image.size
         box = [0, 0, w, h]
 
-    sam_checkpoint = "sam_vit_b_01ec64.pth"
+    sam_checkpoint = "weights/sam_vit_b_01ec64.pth"
     sam = build_sam_vit_b(checkpoint=sam_checkpoint)
 
     if args.baseline:

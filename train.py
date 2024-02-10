@@ -3,12 +3,17 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils.dataloader import DatasetSegmentation, collate_fn
-from utils.lora import LoRA_sam
 from utils.processor import Samprocessor
 import argparse
 import monai
 import torch
 import yaml
+
+from segment_anything import build_sam_vit_b, build_sam_vit_l, build_sam_vit_h
+#from segment_anything_fast import build_sam_vit_b, build_sam_vit_l, build_sam_vit_h
+from mobilesam import build_sam_vit_t
+from utils.lora import LoRA_sam
+from utils.lora_mobilesam import LoRA_sam as LoRA_mobilesam
 
 """
 This file is used to train a LoRA_sam model. I use that monai DiceLoss for the training. The batch size and number of epochs are taken from the configuration file.
@@ -18,13 +23,9 @@ The model is saved at the end as a safetensor.
 parser = argparse.ArgumentParser(description="SAM-fine-tune Training")
 parser.add_argument("-d", "--device", choices=["cuda", "cpu"], default="cuda", help="What device to run the training on.")
 parser.add_argument("-s", "--sam", choices=["sam", "samfast", "mobilesam", "mobilesamv2"], default="sam", help="What version of SAM to use.")
-
+parser.add_argument("-w", "--weights", choices=["b", "l", "h"], default="b", help="Which SAM weights to use, does not change if using MobileSAM.")
+parser.add_argument("-l", "--lora", action="store_true", help="Whether to use LoRA.")
 args = parser.parse_args()
-
-if args.sam == "sam":
-  from segment_anything import build_sam_vit_b
-elif args.sam == "samfast":
-   from segment_anything_fast import build_sam_vit_b
 
 # Load the config file
 with open("./config.yaml", "r") as ymlfile:
@@ -32,17 +33,35 @@ with open("./config.yaml", "r") as ymlfile:
 
 # Take dataset path
 train_dataset_path = config_file["DATASET"]["PATH"]
+
 # Load SAM model
-sam = build_sam_vit_b(checkpoint=config_file["SAM"]["SAM_VIT_B"])
+if args.sam == "mobilesam":
+  sam_version = config_file["SAM"]["MOBILESAM_VIT"])
+elif args.weights == "b":
+  sam_version = config_file["SAM"]["SAM_VIT_B"]
+elif args.weights == "l":
+  sam_version = config_file["SAM"]["SAM_VIT_L"]
+elif args.weights == "h":
+  sam_version = config_file["SAM"]["SAM_VIT_H"]
+
+sam = build_sam_vit_b(checkpoint=sam_version)
+
 #Create SAM LoRA
 rank = config_file["LORA"]["RANK"]
-sam_lora = LoRA_sam(sam, rank)  
+if args.sam == "mobilesam" and args.lora:
+  sam_lora = LoRA_mobilesam(sam, rank)
+elif args.lora:
+  sam_lora = LoRA_sam(sam, rank) 
+
 model = sam_lora.sam
+
 # Process the dataset
 processor = Samprocessor(model, args.sam)
 train_ds = DatasetSegmentation(config_file, processor, mode="train")
+
 # Create a dataloader
 train_dataloader = DataLoader(train_ds, batch_size=config_file["TRAIN"]["BATCH_SIZE"], shuffle=True, collate_fn=collate_fn)
+
 # Initialize optimize and Loss
 optimizer = Adam(model.image_encoder.parameters(), lr=config_file["TRAIN"]["LEARNING_RATE"], weight_decay=0)
 seg_loss = monai.losses.DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
@@ -85,9 +104,14 @@ for epoch in range(num_epochs):
     print(f'EPOCH: {epoch}')
     print(f'Mean loss training: {mean(epoch_losses)}')
     if not epoch % 10:
-      sam_lora.save_lora_parameters(f"lora_rank{rank}_{epoch}.safetensors")
+      if args.lora:
+        sam_lora.save_lora_parameters(f"lora_rank{rank}_{epoch}.safetensors")
+      else:
+        torch.save(model.state_dict(), f"model_{epoch}.pt")
       print("Saved!")
 
 # Save the parameters of the model in safetensors format
-rank = config_file["SAM"]["RANK"]
-sam_lora.save_lora_parameters(f"lora_rank{rank}.safetensors")
+if args.lora:
+  sam_lora.save_lora_parameters(f"lora_rank{rank}.safetensors")
+else:
+  torch.save(model.state_dict(), f"model_final.pt")

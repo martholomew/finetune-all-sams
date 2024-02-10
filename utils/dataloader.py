@@ -51,7 +51,9 @@ class DatasetSegmentation(Dataset):
             original_size = tuple(image.size)[::-1]
     
             # get bounding box prompt
-            box = get_bounding_box(ground_truth_mask)
+            w, h = mask.size
+            box = [0, 0, w, h]
+#            box = get_bounding_box(ground_truth_mask)
             inputs = self.processor(image, original_size, box)
             inputs["ground_truth_mask"] = torch.from_numpy(ground_truth_mask)
 
