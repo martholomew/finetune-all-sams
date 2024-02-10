@@ -54,7 +54,7 @@ elif args.lora:
 model = sam_lora.sam
 
 # Process the dataset
-processor = Samprocessor(model, args.sam)
+processor = Samprocessor(model)
 train_ds = DatasetSegmentation(config_file, processor, mode="train")
 
 # Create a dataloader

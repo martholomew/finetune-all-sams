@@ -1,6 +1,5 @@
-#from segment_anything.utils.transforms import ResizeLongestSide
-#from segment_anything_fast.utils.transforms import ResizeLongestSide
 from utils.lora import LoRA_sam
+from utils.transforms import ResizeLongestSide
 import numpy as np
 import torch
 import PIL
@@ -20,14 +19,12 @@ class Samprocessor:
                 prompt: bounding box of the original image
 
     """
-    def __init__(self, sam_model: LoRA_sam, sam):
+    def __init__(self, sam_model: LoRA_sam):
         super().__init__()
-        if sam == "sam":
-            from segment_anything.utils.transforms import ResizeLongestSide
-        elif sam == "samfast":
-             from segment_anything_fast.utils.transforms import ResizeLongestSide
+
         self.model = sam_model
         self.transform = ResizeLongestSide(sam_model.image_encoder.img_size)
+        
         self.reset_image()
 
     def __call__(self, image: PIL.Image, original_size: tuple, prompt: list) -> dict:
