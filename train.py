@@ -11,7 +11,7 @@ import yaml
 
 from segment_anything import build_sam_vit_b, build_sam_vit_l, build_sam_vit_h
 #from segment_anything_fast import build_sam_vit_b, build_sam_vit_l, build_sam_vit_h
-from mobilesam import build_sam_vit_t
+from mobile_sam import build_sam_vit_t
 from utils.lora import LoRA_sam
 from utils.lora_mobilesam import LoRA_sam as LoRA_mobilesam
 
@@ -36,15 +36,13 @@ train_dataset_path = config_file["DATASET"]["PATH"]
 
 # Load SAM model
 if args.sam == "mobilesam":
-  sam_version = config_file["SAM"]["MOBILESAM_VIT"]
+  sam = build_sam_vit_t(checkpoint=config_file["SAM"]["MOBILESAM_VIT"])
 elif args.weights == "b":
-  sam_version = config_file["SAM"]["SAM_VIT_B"]
+  sam = build_sam_vit_b(checkpoint=config_file["SAM"]["SAM_VIT_B"])
 elif args.weights == "l":
-  sam_version = config_file["SAM"]["SAM_VIT_L"]
+  sam = build_sam_vit_l(checkpoint=config_file["SAM"]["SAM_VIT_L"])
 elif args.weights == "h":
-  sam_version = config_file["SAM"]["SAM_VIT_H"]
-
-sam = build_sam_vit_b(checkpoint=sam_version)
+  sam = build_sam_vit_h(checkpoint=config_file["SAM"]["SAM_VIT_H"])
 
 #Create SAM LoRA
 rank = config_file["LORA"]["RANK"]
