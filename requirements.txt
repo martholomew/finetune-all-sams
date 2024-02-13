@@ -11,3 +11,4 @@ statistics >= 1.0.3.5
 torch == 2.2.0
 torchvision >= 0.15.2
 tqdm >= 4.66.1
+timm
