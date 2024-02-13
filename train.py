@@ -1,6 +1,9 @@
 from statistics import mean
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+
+import torch.multiprocessing as mp
+
 from tqdm import tqdm
 from utils.dataloader import DatasetSegmentation, collate_fn
 from utils.processor import Samprocessor
@@ -22,97 +25,101 @@ This file is used to train a LoRA_sam model. I use that monai DiceLoss for the t
 The model is saved at the end as a safetensor.
 """
 
-parser = argparse.ArgumentParser(description="SAM-fine-tune Training")
-parser.add_argument("load", nargs='?', default=None, help="Load LoRA weights.")
-parser.add_argument("-s", "--sam", choices=["sam", "samfast", "mobilesam", "mobilesamv2"], default="sam", help="What version of SAM to use.")
-parser.add_argument("-w", "--weights", choices=["b", "l", "h"], default="b", help="Which SAM weights to use, does not change if using MobileSAM.")
-parser.add_argument("-l", "--lora", action="store_true", help="Whether to use LoRA.")
-args = parser.parse_args()
+if __name__ == "__main__":
 
-# Load the config file
-with open("./config.yaml", "r") as ymlfile:
-   config_file = yaml.load(ymlfile, Loader=yaml.Loader)
+  mp.set_start_method('spawn')
 
-# Take dataset path
-train_dataset_path = config_file["DATASET"]["PATH"]
+  parser = argparse.ArgumentParser(description="SAM-fine-tune Training")
+  parser.add_argument("load", nargs='?', default=None, help="Load LoRA weights.")
+  parser.add_argument("-s", "--sam", choices=["sam", "samfast", "mobilesam", "mobilesamv2"], default="sam", help="What version of SAM to use.")
+  parser.add_argument("-w", "--weights", choices=["b", "l", "h"], default="b", help="Which SAM weights to use, does not change if using MobileSAM.")
+  parser.add_argument("-l", "--lora", action="store_true", help="Whether to use LoRA.")
+  args = parser.parse_args()
 
-# Load SAM model
-if args.sam == "mobilesam":
-  sam = build_sam_vit_t(checkpoint=config_file["SAM"]["MOBILESAM_VIT"])
-elif args.weights == "b":
-  sam = build_sam_vit_b(checkpoint=config_file["SAM"]["SAM_VIT_B"])
-elif args.weights == "l":
-  sam = build_sam_vit_l(checkpoint=config_file["SAM"]["SAM_VIT_L"])
-elif args.weights == "h":
-  sam = build_sam_vit_h(checkpoint=config_file["SAM"]["SAM_VIT_H"])
+  # Load the config file
+  with open("./config.yaml", "r") as ymlfile:
+     config_file = yaml.load(ymlfile, Loader=yaml.Loader)
 
-#Create SAM LoRA
-rank = config_file["LORA"]["RANK"]
-if args.sam == "mobilesam" and args.lora:
-  sam_lora = LoRA_mobilesam(sam, rank)
-elif args.lora:
-  sam_lora = LoRA_sam(sam, rank)
+  # Take dataset path
+  train_dataset_path = config_file["DATASET"]["PATH"]
 
-if args.load:
-  sam_lora.load_lora_parameters(args.load)
+  # Load SAM model
+  if args.sam == "mobilesam":
+    sam = build_sam_vit_t(checkpoint=config_file["SAM"]["MOBILESAM_VIT"])
+  elif args.weights == "b":
+    sam = build_sam_vit_b(checkpoint=config_file["SAM"]["SAM_VIT_B"])
+  elif args.weights == "l":
+    sam = build_sam_vit_l(checkpoint=config_file["SAM"]["SAM_VIT_L"])
+  elif args.weights == "h":
+    sam = build_sam_vit_h(checkpoint=config_file["SAM"]["SAM_VIT_H"])
 
-model = sam_lora.sam
+  #Create SAM LoRA
+  rank = config_file["LORA"]["RANK"]
+  if args.sam == "mobilesam" and args.lora:
+    sam_lora = LoRA_mobilesam(sam, rank)
+  elif args.lora:
+    sam_lora = LoRA_sam(sam, rank)
 
-# Process the dataset
-processor = Samprocessor(model)
-train_ds = DatasetSegmentation(config_file, processor, mode="train")
+  if args.load:
+    sam_lora.load_lora_parameters(args.load)
 
-# Create a dataloader
-train_dataloader = DataLoader(train_ds, batch_size=config_file["TRAIN"]["BATCH_SIZE"], shuffle=True, collate_fn=collate_fn)
+  model = sam_lora.sam
 
-# Initialize optimize and Loss
-optimizer = Adam(model.image_encoder.parameters(), lr=config_file["TRAIN"]["LEARNING_RATE"], weight_decay=0)
-seg_loss = monai.losses.DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
-num_epochs = config_file["TRAIN"]["NUM_EPOCHS"]
+  # Process the dataset
+  processor = Samprocessor(model)
+  train_ds = DatasetSegmentation(config_file, processor, mode="train")
 
-accelerator = Accelerator()
-device = accelerator.device
+  # Create a dataloader
+  train_dataloader = DataLoader(train_ds, batch_size=config_file["TRAIN"]["BATCH_SIZE"], shuffle=True, collate_fn=collate_fn, num_workers=2)
 
-model, optimizer, data = accelerator.prepare(model, optimizer, train_dataloader)
-print(data)
-model.train()
+  # Initialize optimize and Loss
+  optimizer = Adam(model.image_encoder.parameters(), lr=config_file["TRAIN"]["LEARNING_RATE"], weight_decay=0)
+  seg_loss = monai.losses.DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
+  num_epochs = config_file["TRAIN"]["NUM_EPOCHS"]
 
-total_loss = []
+  accelerator = Accelerator()
+  device = accelerator.device
 
-for epoch in range(num_epochs):
-    epoch_losses = []
+  model, optimizer, data = accelerator.prepare(model, optimizer, train_dataloader)
+  print(data)
+  model.train()
 
-    for i, batch in enumerate(tqdm(data)):
-      
-      outputs = model(batched_input=batch,
-                      multimask_output=False)
+  total_loss = []
 
-      stk_out = torch.stack([out["low_res_logits"] for out in outputs], dim=0)
-      stk_gt = torch.stack([b["ground_truth_mask"] for b in batch], dim=0)
-      stk_out = stk_out.squeeze(1)
-      stk_gt = stk_gt.unsqueeze(1) # We need to get the [B, C, H, W] starting from [H, W]
-      loss = seg_loss(stk_out, stk_gt.float().to(device))
-      
-      optimizer.zero_grad()
-      
-      # if args.sam == "samfast":
-      #   loss.requires_grad = True
-      accelerator.backward(loss)
-      # optimize
-      optimizer.step()
-      epoch_losses.append(loss.item())
+  for epoch in range(num_epochs):
+      epoch_losses = []
 
-    print(f'EPOCH: {epoch}')
-    print(f'Mean loss training: {mean(epoch_losses)}')
-    if not epoch % 10:
-      if args.lora:
-        sam_lora.save_lora_parameters(f"lora_rank{rank}_{epoch}.safetensors")
-      else:
-        torch.save(model.state_dict(), f"model_{epoch}.pt")
-      print("Saved!")
+      for i, batch in enumerate(tqdm(data)):
+        
+        outputs = model(batched_input=batch,
+                        multimask_output=False)
 
-# Save the parameters of the model in safetensors format
-if args.lora:
-  sam_lora.save_lora_parameters(f"lora_rank{rank}.safetensors")
-else:
-  torch.save(model.state_dict(), f"model_final.pt")
+        stk_out = torch.stack([out["low_res_logits"] for out in outputs], dim=0)
+        stk_gt = torch.stack([b["ground_truth_mask"] for b in batch], dim=0)
+        stk_out = stk_out.squeeze(1)
+        stk_gt = stk_gt.unsqueeze(1) # We need to get the [B, C, H, W] starting from [H, W]
+        loss = seg_loss(stk_out, stk_gt.float().to(device))
+        
+        optimizer.zero_grad()
+        
+        # if args.sam == "samfast":
+        #   loss.requires_grad = True
+        accelerator.backward(loss)
+        # optimize
+        optimizer.step()
+        epoch_losses.append(loss.item())
+
+      print(f'EPOCH: {epoch}')
+      print(f'Mean loss training: {mean(epoch_losses)}')
+      if not epoch % 10:
+        if args.lora:
+          sam_lora.save_lora_parameters(f"lora_rank{rank}_{epoch}.safetensors")
+        else:
+          torch.save(model.state_dict(), f"model_{epoch}.pt")
+        print("Saved!")
+
+  # Save the parameters of the model in safetensors format
+  if args.lora:
+    sam_lora.save_lora_parameters(f"lora_rank{rank}.safetensors")
+  else:
+    torch.save(model.state_dict(), f"model_final.pt")
