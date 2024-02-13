@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 
 from tqdm import tqdm
-from utils.dataloader import DatasetSegmentation, collate_fn
+from utils.dataloader import DatasetSegmentation
 from utils.processor import Samprocessor
 import argparse
 import monai
@@ -24,6 +24,18 @@ from accelerate import Accelerator
 This file is used to train a LoRA_sam model. I use that monai DiceLoss for the training. The batch size and number of epochs are taken from the configuration file.
 The model is saved at the end as a safetensor.
 """
+
+def collate_fn(batch: torch.utils.data) -> list:
+    """
+    Used to get a list of dict as output when using a dataloader
+
+    Arguments:
+        batch: The batched dataset
+    
+    Return:
+        (list): list of batched dataset so a list(dict)
+    """
+    return list(batch)
 
 if __name__ == "__main__":
 
