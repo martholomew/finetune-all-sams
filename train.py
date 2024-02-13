@@ -15,6 +15,8 @@ from mobile_sam import build_sam_vit_t
 from utils.lora import LoRA_sam
 from utils.lora_mobilesam import LoRA_sam as LoRA_mobilesam
 
+from accelerate import Accelerator
+
 """
 This file is used to train a LoRA_sam model. I use that monai DiceLoss for the training. The batch size and number of epochs are taken from the configuration file.
 The model is saved at the end as a safetensor.
@@ -22,7 +24,6 @@ The model is saved at the end as a safetensor.
 
 parser = argparse.ArgumentParser(description="SAM-fine-tune Training")
 parser.add_argument("load", nargs='?', default=None, help="Load LoRA weights.")
-parser.add_argument("-d", "--device", choices=["cuda", "cpu"], default="cuda", help="What device to run the training on.")
 parser.add_argument("-s", "--sam", choices=["sam", "samfast", "mobilesam", "mobilesamv2"], default="sam", help="What version of SAM to use.")
 parser.add_argument("-w", "--weights", choices=["b", "l", "h"], default="b", help="Which SAM weights to use, does not change if using MobileSAM.")
 parser.add_argument("-l", "--lora", action="store_true", help="Whether to use LoRA.")
@@ -69,21 +70,19 @@ optimizer = Adam(model.image_encoder.parameters(), lr=config_file["TRAIN"]["LEAR
 seg_loss = monai.losses.DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
 num_epochs = config_file["TRAIN"]["NUM_EPOCHS"]
 
-if args.device == "cuda":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-else:
-    device = "cpu"
+accelerator = Accelerator()
+device = accelerator.device
 
-# Set model to train and into the device
+model, optimizer, data = accelerator.prepare(model, optimizer, train_dataloader)
+print(data)
 model.train()
-model.to(device)
 
 total_loss = []
 
 for epoch in range(num_epochs):
     epoch_losses = []
 
-    for i, batch in enumerate(tqdm(train_dataloader)):
+    for i, batch in enumerate(tqdm(data)):
       
       outputs = model(batched_input=batch,
                       multimask_output=False)
@@ -98,7 +97,7 @@ for epoch in range(num_epochs):
       
       # if args.sam == "samfast":
       #   loss.requires_grad = True
-      loss.backward()
+      accelerator.backward(loss)
       # optimize
       optimizer.step()
       epoch_losses.append(loss.item())
